@@ -197,6 +197,21 @@ class ChromaDBStorage(BaseVectorStorage):
 
         # Extract metadata, ids, and contents
         ids = list(data.keys())
+
+        # get all existing ids
+        existing_docs = collection.get()
+        if len(existing_docs) > 0:
+            existing_ids = existing_docs['ids']
+            missing_ids = [id for id in ids if id not in existing_ids]
+            if len(missing_ids) == 0:
+                logger.info(f"No new data to upsert.")
+                return ids
+            
+        ids = missing_ids
+
+        # filter data to include only new data
+        data = {k: v for k, v in data.items() if k in ids}
+
         list_data = [
             {
                 "__id__": k,
@@ -211,17 +226,6 @@ class ChromaDBStorage(BaseVectorStorage):
             contents[i : i + self._max_batch_size]
             for i in range(0, len(contents), self._max_batch_size)
         ]
-
-        # get all existing ids
-        existing_docs = collection.get()
-        if len(existing_docs) > 0:
-            existing_ids = existing_docs['ids']
-            missing_ids = [id for id in ids if id not in existing_ids]
-            if len(missing_ids) == 0:
-                logger.info(f"No new data to upsert.")
-                return ids
-
-        ids = missing_ids
 
         embeddings_list = await asyncio.gather(
             *[self.embedding_func(batch) for batch in batches]
