@@ -563,6 +563,14 @@ async def ollama_embedding(texts: list[str], embed_model) -> np.ndarray:
 
     return embed_text
 
+async def ollama_embed(texts: list[str], embed_model) -> np.ndarray:
+    embed_text = []
+    for text in texts:
+        data = ollama.embed(model=embed_model, input=text)
+        embed_text.append(data["embeddings"][0])
+
+    return embed_text
+
 class Model(BaseModel):
     """
     This is a Pydantic model class named 'Model' that is used to define a custom language model.

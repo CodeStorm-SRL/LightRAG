@@ -15,6 +15,7 @@ from .utils import (
     pack_user_ass_to_openai_messages,
     split_string_by_multi_markers,
     truncate_list_by_token_size,
+    extract_json_from_string
 )
 from .base import (
     BaseGraphStorage,
@@ -422,8 +423,14 @@ async def local_query(
             keywords = ", ".join(keywords)
         # Handle parsing error
         except json.JSONDecodeError as e:
-            print(f"JSON parsing error: {e}")
-            return PROMPTS["fail_response"]
+            try:
+                result = extract_json_from_string(result)
+                keywords_data = json.loads(result)
+                keywords = keywords_data.get("low_level_keywords", [])
+                keywords = ", ".join(keywords)
+            except json.JSONDecodeError as e:
+              print(f"JSON parsing error: {e}")
+              return PROMPTS["fail_response"]
     if keywords:
         context = await _build_local_query_context(
             keywords,

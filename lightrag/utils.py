@@ -115,6 +115,14 @@ def write_json(json_obj, file_name):
         json.dump(json_obj, f, indent=2, ensure_ascii=False)
 
 
+def extract_json_from_string(content: str):
+    regexp = re.compile(r"\{([^}]+)\}")
+    match = regexp.search(content)
+    if match is not None:
+        return match.group(0)
+    return None
+
+
 def encode_string_by_tiktoken(content: str, model_name: str = "gpt-4o"):
     global ENCODER
     if ENCODER is None:

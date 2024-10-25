@@ -14,6 +14,8 @@ from .base import (
     BaseVectorStorage,
 )
 
+import chromadb
+import json
 
 @dataclass
 class JsonKVStorage(BaseKVStorage):
@@ -114,6 +116,110 @@ class NanoVectorDBStorage(BaseVectorStorage):
     async def index_done_callback(self):
         self._client.save()
 
+@dataclass
+class ChromaDBStorage(BaseVectorStorage):
+    _max_batch_size: int = 0
+
+    def __post_init__(self):
+        self._client = chromadb.HttpClient()
+        self._max_batch_size = self.global_config["embedding_batch_num"]
+
+        # try:
+        #     self._client.delete_collection(name=self.namespace)
+        # except:
+        #     pass
+
+    async def upsert(self, data: dict[str, dict]):
+        logger.info(f"Inserting {len(data)} vectors to {self.namespace}")
+        if not len(data):
+            logger.warning("You insert an empty data to vector DB")
+            return []
+        # Extract metadata, ids, and contents
+        ids = list(data.keys())
+        list_data = [
+            {
+                "__id__": k,
+                **{k1: v1 for k1, v1 in v.items() if k1 in self.meta_fields},
+            }
+            for k, v in data.items()
+        ]
+        contents = [v["content"] for v in data.values()]
+        # metadatas = [{k1: v1 for k1, v1 in v.items() if k1 in self.meta_fields} for v in data.values()]
+
+        batches = [
+            contents[i : i + self._max_batch_size]
+            for i in range(0, len(contents), self._max_batch_size)
+        ]
+        embeddings_list = await asyncio.gather(
+            *[self.embedding_func(batch) for batch in batches]
+        )
+        embeddings = np.concatenate(embeddings_list)
+
+        try:
+            #TODO: implement collection_id
+            collection = self._client.get_or_create_collection(name=self.namespace, metadata={"hnsw:space": "cosine"})
+        except Exception as e:
+            logger.error(f"Failed to get or create Chroma collection: {e}")
+            return []
+        
+        # Add data to ChromaDB collection
+        try:
+            if len(self.meta_fields) > 0:
+                for i, d in enumerate(list_data):
+                    d.pop("__id__", None)
+                    document = json.dumps(d)
+                    collection.upsert(
+                        ids=[ids[i]],
+                        documents=[document],
+                        # metadatas=metadatas, #TODO: re-implement metadatas
+                        embeddings=[embeddings[i]]
+                    )
+            else:
+                collection.upsert(
+                    ids=ids,
+                    documents=contents,
+                    embeddings=embeddings
+                )
+        except Exception as e:
+            logger.error(f"Failed to upsert data to ChromaDB: {e}")
+            return []
+
+        logger.info(f"Successfully upserted {len(list_data)} records.")
+        return ids
+
+    async def query(self, query: str, top_k=5):
+        collection = self._client.get_collection(name=self.namespace)
+        embedding = await self.embedding_func([query])
+        embedding = embedding[0]
+        results = collection.query(
+            query_embeddings=embedding,
+            n_results=top_k,
+            include=['documents', 'distances', 'metadatas', 'embeddings']
+        )
+
+        distances = results['distances'][0]
+        ids = results['ids'][0]
+        documents = results['documents'][0]
+
+        ret = []
+        for i in range(len(ids)):
+            keys = []
+            try: 
+                d = json.loads(documents[i])
+                keys = list(d.keys())
+            except:
+                d = documents[i]
+            res = {
+                'id': ids[i],
+                'distance': distances[i],
+                '__id__': ids[i],
+                '__metrics__': distances[i],
+            }
+            for k in keys:
+                res[k] = d[k]
+            ret.append(res)
+
+        return ret
 
 @dataclass
 class NetworkXStorage(BaseGraphStorage):
