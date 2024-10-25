@@ -183,16 +183,18 @@ class ChromaDBStorage(BaseVectorStorage):
         self._client = chromadb.HttpClient()
         self._max_batch_size = self.global_config["embedding_batch_num"]
 
-        # try:
-        #     self._client.delete_collection(name=self.namespace)
-        # except:
-        #     pass
-
     async def upsert(self, data: dict[str, dict]):
         logger.info(f"Inserting {len(data)} vectors to {self.namespace}")
         if not len(data):
             logger.warning("You insert an empty data to vector DB")
             return []
+        
+        try:
+            collection = self._client.get_or_create_collection(name=self.namespace, metadata={"hnsw:space": "cosine"})
+        except Exception as e:
+            logger.error(f"Failed to get or create Chroma collection: {e}")
+            return []
+
         # Extract metadata, ids, and contents
         ids = list(data.keys())
         list_data = [
@@ -209,17 +211,22 @@ class ChromaDBStorage(BaseVectorStorage):
             contents[i : i + self._max_batch_size]
             for i in range(0, len(contents), self._max_batch_size)
         ]
+
+        # get all existing ids
+        existing_docs = collection.get()
+        if len(existing_docs) > 0:
+            existing_ids = existing_docs['ids']
+            missing_ids = [id for id in ids if id not in existing_ids]
+            if len(missing_ids) == 0:
+                logger.info(f"No new data to upsert.")
+                return ids
+
+        ids = missing_ids
+
         embeddings_list = await asyncio.gather(
             *[self.embedding_func(batch) for batch in batches]
         )
         embeddings = np.concatenate(embeddings_list)
-
-        try:
-            #TODO: implement collection_id
-            collection = self._client.get_or_create_collection(name=self.namespace, metadata={"hnsw:space": "cosine"})
-        except Exception as e:
-            logger.error(f"Failed to get or create Chroma collection: {e}")
-            return []
         
         # Add data to ChromaDB collection
         try:
