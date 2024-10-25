@@ -95,7 +95,13 @@ class DuckDBStorage(BaseKVStorage):
         if fields:
             filtered_results = [{field: item[field] for field in fields if field in item} for _, item in results]
             return dict(zip(ids, filtered_results))
-        return dict(results)
+        
+        ret = []
+        for id in ids:
+            result = next((r for r in results if r[0] == id), None)
+            ret.append(json.loads(result[1]) if result else None)
+
+        return ret
 
     async def filter_keys(self, data: list[str]) -> set[str]:
         return set([s for s in data if s not in self._data])
