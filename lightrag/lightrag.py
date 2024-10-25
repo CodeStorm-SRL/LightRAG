@@ -20,6 +20,7 @@ from .operate import (
 
 from .storage import (
     JsonKVStorage,
+    DuckDBStorage,
     NanoVectorDBStorage,
     NetworkXStorage,
     ChromaDBStorage,
@@ -91,7 +92,7 @@ class LightRAG:
     llm_model_max_async: int = 16
 
     # storage
-    key_string_value_json_storage_cls: Type[BaseKVStorage] = JsonKVStorage
+    key_string_value_json_storage_cls: Type[BaseKVStorage] = DuckDBStorage
     vector_db_storage_cls: Type[BaseVectorStorage] = ChromaDBStorage
     vector_db_storage_cls_kwargs: dict = field(default_factory=dict)
     graph_storage_cls: Type[BaseGraphStorage] = NetworkXStorage

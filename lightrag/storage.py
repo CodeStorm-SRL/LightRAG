@@ -57,6 +57,65 @@ class JsonKVStorage(BaseKVStorage):
     async def drop(self):
         self._data = {}
 
+@dataclass
+class DuckDBStorage(BaseKVStorage):
+    import duckdb
+
+    def __post_init__(self):
+        working_dir = self.global_config["working_dir"]
+        self._file_name = os.path.join(working_dir, f"kv_store_{self.namespace}.db")
+        self._conn = self.duckdb.connect(self._file_name, read_only=False)
+        self._conn.execute("""
+        CREATE TABLE IF NOT EXISTS kv_store (
+            key VARCHAR PRIMARY KEY,
+            value JSON
+        )
+        """)
+        self._data = self._conn.execute("SELECT * FROM kv_store").fetchall()
+        logger.info(f"Load DuckDB {self._file_name} with {len(self._data)} data")
+
+    async def all_keys(self) -> list[str]:
+        keys = [row[0] for row in self._conn.execute("SELECT key FROM kv_store").fetchall()]
+        return keys
+
+    async def index_done_callback(self):
+        pass
+
+    async def get_by_id(self, id):
+        result = self._conn.execute("SELECT value FROM kv_store WHERE key = ?", (id,)).fetchone()
+        # convert to dict
+        ret = json.loads(result[0]) if result else None
+        return ret
+
+    async def get_by_ids(self, ids, fields=None):
+        placeholders = ', '.join(['?'] * len(ids))
+        results = self._conn.execute(f"SELECT key, value FROM kv_store WHERE key IN ({placeholders})", ids).fetchall()
+
+        # Optionally filter fields
+        if fields:
+            filtered_results = [{field: item[field] for field in fields if field in item} for _, item in results]
+            return dict(zip(ids, filtered_results))
+        return dict(results)
+
+    async def filter_keys(self, data: list[str]) -> set[str]:
+        return set([s for s in data if s not in self._data])
+
+    async def upsert(self, data: dict[str, dict]):
+        # Insert or update records
+        for key, value in data.items():
+            self._conn.execute("""
+            INSERT INTO kv_store (key, value) VALUES (?, ?)
+            ON CONFLICT(key) DO UPDATE SET value = excluded.value
+            """, (key, value))
+        
+        # Return keys that were newly added (not updated)
+        existing_keys = await self.filter_keys(list(data.keys()))
+        left_data = {k: v for k, v in data.items() if k not in existing_keys}
+        return left_data
+
+    async def drop(self):
+        self._conn.execute("DROP TABLE IF EXISTS kv_store")
+        self._conn.close()
 
 @dataclass
 class NanoVectorDBStorage(BaseVectorStorage):
