@@ -6,6 +6,7 @@ import aioboto3
 import aiohttp
 import numpy as np
 import ollama
+from ollama import Options
 
 from openai import AsyncOpenAI, APIConnectionError, RateLimitError, Timeout, AsyncAzureOpenAI
 
@@ -282,6 +283,7 @@ async def ollama_model_if_cache(
     kwargs.pop("response_format", None)
 
     ollama_client = ollama.AsyncClient()
+    input = ""
     messages = []
     if system_prompt:
         messages.append({"role": "system", "content": system_prompt})
@@ -289,17 +291,24 @@ async def ollama_model_if_cache(
     hashing_kv: BaseKVStorage = kwargs.pop("hashing_kv", None)
     messages.extend(history_messages)
     messages.append({"role": "user", "content": prompt})
-    if hashing_kv is not None:
+    if hashing_kv is not None and system_prompt is None:
         args_hash = compute_args_hash(model, messages)
         if_cache_return = await hashing_kv.get_by_id(args_hash)
         if if_cache_return is not None:
             return if_cache_return["return"]
+        
+    num_ctx = hashing_kv.global_config.get("llm_model_max_token_size", 0)
+    options = Options(num_ctx=num_ctx, temperature=0.1)
 
-    response = await ollama_client.chat(model=model, messages=messages, **kwargs)
+    for message in messages:
+        input += f"<|start_header_id|>{message['role']}<|end_header_id|>{message['content']}\n"
 
-    result = response["message"]["content"]
+    input += "<|start_header_id|>assistant<|end_header_id|>\n\n"
+    response = await ollama_client.generate(model=model, prompt=input, system=system_prompt, options=options, **kwargs)
 
-    if hashing_kv is not None:
+    result = response['response']
+
+    if hashing_kv is not None and system_prompt is None:
         await hashing_kv.upsert({args_hash: {"return": result, "model": model}})
 
     return result
@@ -558,7 +567,7 @@ async def hf_embedding(texts: list[str], tokenizer, embed_model) -> np.ndarray:
 async def ollama_embedding(texts: list[str], embed_model) -> np.ndarray:
     embed_text = []
     for text in texts:
-        data = ollama.embeddings(model=embed_model, prompt=text)
+        data = ollama.embeddings(model=embed_model, prompt=text, keep_alive="-1m")
         embed_text.append(data["embedding"])
 
     return embed_text
@@ -566,7 +575,7 @@ async def ollama_embedding(texts: list[str], embed_model) -> np.ndarray:
 async def ollama_embed(texts: list[str], embed_model) -> np.ndarray:
     embed_text = []
     for text in texts:
-        data = ollama.embed(model=embed_model, input=text)
+        data = ollama.embed(model=embed_model, input=text, keep_alive="-1m")
         embed_text.append(data["embeddings"][0])
 
     return embed_text
