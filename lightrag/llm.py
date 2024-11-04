@@ -304,7 +304,7 @@ async def ollama_model_if_cache(
         input += f"<|start_header_id|>{message['role']}<|end_header_id|>{message['content']}\n"
 
     input += "<|start_header_id|>assistant<|end_header_id|>\n\n"
-    response = await ollama_client.generate(model=model, prompt=input, system=system_prompt, options=options, **kwargs)
+    response = await ollama_client.generate(model=model, prompt=input, system=system_prompt, keep_alive="-1m", options=options, **kwargs)
 
     result = response['response']
 
