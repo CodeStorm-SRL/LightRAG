@@ -5,6 +5,8 @@ from datetime import datetime
 from functools import partial
 from typing import Type, cast
 
+from .prompt import PROMPTS
+
 from .llm import (
     gpt_4o_mini_complete,
     openai_embedding,
@@ -102,10 +104,15 @@ class LightRAG:
     addon_params: dict = field(default_factory=dict)
     convert_response_to_json_func: callable = convert_response_to_json
 
+    # prompt
+    prompts: list = field(default_factory=lambda: PROMPTS)
+
     def __post_init__(self):
         log_file = os.path.join(self.working_dir, "lightrag.log")
         set_logger(log_file)
         logger.info(f"Logger initialized for working directory: {self.working_dir}")
+
+        PROMPTS = self.prompts
 
         _print_config = ",\n  ".join([f"{k} = {v}" for k, v in asdict(self).items()])
         logger.debug(f"LightRAG init with param:\n  {_print_config}\n")

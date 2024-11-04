@@ -24,8 +24,8 @@ from .base import (
     TextChunkSchema,
     QueryParam,
 )
-from .prompt import GRAPH_FIELD_SEP, PROMPTS
 
+from .prompt import GRAPH_FIELD_SEP
 
 def chunking_by_token_size(
     content: str, overlap_token_size=128, max_token_size=1024, tiktoken_model="gpt-4o"
@@ -61,6 +61,9 @@ async def _handle_entity_relation_summary(
     tokens = encode_string_by_tiktoken(description, model_name=tiktoken_model_name)
     if len(tokens) < summary_max_tokens:  # No need for summary
         return description
+    
+    PROMPTS = global_config["prompts"]
+
     prompt_template = PROMPTS["summarize_entity_descriptions"]
     use_description = decode_tokens_by_tiktoken(
         tokens[:llm_max_tokens], model_name=tiktoken_model_name
@@ -251,6 +254,8 @@ async def extract_entities(
 
     ordered_chunks = list(chunks.items())
 
+    PROMPTS = global_config["prompts"]
+
     entity_extract_prompt = PROMPTS["entity_extraction"]
     context_base = dict(
         tuple_delimiter=PROMPTS["DEFAULT_TUPLE_DELIMITER"],
@@ -403,6 +408,8 @@ async def local_query(
 ) -> str:
     context = None
     use_model_func = global_config["llm_model_func"]
+
+    PROMPTS = global_config["prompts"]
 
     kw_prompt_temp = PROMPTS["keywords_extraction"]
     kw_prompt = kw_prompt_temp.format(query=query)
@@ -658,6 +665,8 @@ async def global_query(
     context = None
     use_model_func = global_config["llm_model_func"]
 
+    PROMPTS = global_config["prompts"]
+
     kw_prompt_temp = PROMPTS["keywords_extraction"]
     kw_prompt = kw_prompt_temp.format(query=query)
     result = await use_model_func(kw_prompt)
@@ -898,6 +907,8 @@ async def hybrid_query(
     high_level_context = None
     use_model_func = global_config["llm_model_func"]
 
+    PROMPTS = global_config["prompts"]
+
     kw_prompt_temp = PROMPTS["keywords_extraction"]
     kw_prompt = kw_prompt_temp.format(query=query)
 
@@ -1059,6 +1070,9 @@ async def naive_query(
 ):
     use_model_func = global_config["llm_model_func"]
     results = await chunks_vdb.query(query, top_k=query_param.top_k)
+
+    PROMPTS = global_config["prompts"]
+
     if not len(results):
         return PROMPTS["fail_response"]
     chunks_ids = [r["id"] for r in results]
