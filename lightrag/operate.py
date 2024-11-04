@@ -100,14 +100,17 @@ async def _handle_single_relationship_extraction(
     record_attributes: list[str],
     chunk_key: str,
 ):
-    if len(record_attributes) < 5 or record_attributes[0] != '"relationship"':
+    if len(record_attributes) < 4 or record_attributes[0] != '"relationship"':
         return None
     # add this record as edge
     source = clean_str(record_attributes[1].upper())
     target = clean_str(record_attributes[2].upper())
     edge_description = clean_str(record_attributes[3])
 
-    edge_keywords = clean_str(record_attributes[4])
+    edge_keywords = ""
+    if len(record_attributes) > 4:
+        edge_keywords = clean_str(record_attributes[4])
+        
     edge_source_id = chunk_key
     weight = (
         float(record_attributes[-1]) if is_float_regex(record_attributes[-1]) else 1.0
@@ -263,6 +266,7 @@ async def extract_entities(
     already_relations = 0
 
     async def _process_single_content(chunk_key_dp: tuple[str, TextChunkSchema]):
+        print(f"Processing chunk: {chunk_key_dp[0]}")
         nonlocal already_processed, already_entities, already_relations
         chunk_key = chunk_key_dp[0]
         chunk_dp = chunk_key_dp[1]
@@ -283,7 +287,7 @@ async def extract_entities(
                 if_loop_prompt, history_messages=history
             )
             if_loop_result = if_loop_result.strip().strip('"').strip("'").lower()
-            if if_loop_result != "yes":
+            if if_loop_result != "yes" or if_loop_result != "si":
                 break
 
         records = split_string_by_multi_markers(
@@ -925,6 +929,7 @@ async def hybrid_query(
             return PROMPTS["fail_response"]
 
     if ll_keywords:
+        print(f"--- LOW_LEVEL_KEYWORDS ---\n{ll_keywords}\n\n")
         low_level_context = await _build_local_query_context(
             ll_keywords,
             knowledge_graph_inst,
@@ -934,6 +939,7 @@ async def hybrid_query(
         )
 
     if hl_keywords:
+        print(f"--- HIGH_LEVEL_KEYWORDS ---\n{hl_keywords}\n\n")
         high_level_context = await _build_global_query_context(
             hl_keywords,
             knowledge_graph_inst,
@@ -944,6 +950,8 @@ async def hybrid_query(
         )
 
     context = combine_contexts(high_level_context, low_level_context)
+
+    print(f'--- CONTEXT ---\n{context}')
 
     if query_param.only_need_context:
         return context
