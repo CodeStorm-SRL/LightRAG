@@ -298,12 +298,12 @@ async def ollama_model_if_cache(
             return if_cache_return["return"]
         
     num_ctx = hashing_kv.global_config.get("llm_model_max_token_size", 0)
-    options = Options(num_ctx=num_ctx, temperature=0.1)
+    options = Options(num_ctx=num_ctx, temperature=0.3)
 
     for message in messages:
         input += f"<|start_header_id|>{message['role']}<|end_header_id|>{message['content']}\n"
 
-    input += "<|start_header_id|>assistant<|end_header_id|>\n\n"
+    input += "<|start_header_id|>assistant<|end_header_id|>"
     response = await ollama_client.generate(model=model, prompt=input, system=system_prompt, keep_alive="-1m", options=options, **kwargs)
 
     result = response['response']
