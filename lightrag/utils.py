@@ -71,7 +71,7 @@ def compute_mdhash_id(content, prefix: str = ""):
     return prefix + md5(content.encode()).hexdigest()
 
 
-def limit_async_func_call(max_size: int, waitting_time: float = 0.0001):
+def limit_async_func_call(max_size: int, waitting_time: float = 0.1):
     """Add restriction of maximum async calling times for a async func"""
 
     def final_decro(func):
@@ -185,7 +185,7 @@ def truncate_list_by_token_size(list_data: list, key: callable, max_token_size: 
 
 def list_of_list_to_csv(data: list[list]):
     return "\n".join(
-        [",\t".join([str(data_dd) for data_dd in data_d]) for data_d in data]
+        [";\t".join([str(data_dd) for data_dd in data_d]) for data_d in data]
     )
 
 

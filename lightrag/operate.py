@@ -1032,9 +1032,6 @@ def combine_contexts(high_level_context, low_level_context, global_config):
     else:
         ll_entities, ll_relationships, ll_sources = extract_sections(low_level_context)
 
-    PROMPTS = global_config["prompts"]
-    default_entity_type_descriptions = PROMPTS["DEFAULT_ENTITY_TYPES_DESCRIPTIONS"]
-
     # Combine and deduplicate the entities
     combined_entities_set = set(
         filter(None, hl_entities.strip().split("\n") + ll_entities.strip().split("\n"))

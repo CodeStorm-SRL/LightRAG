@@ -313,6 +313,47 @@ async def ollama_model_if_cache(
 
     return result
 
+async def mlx_model_if_cache(
+    model, prompt, system_prompt=None, history_messages=[], **kwargs
+) -> str:
+    from mlx_lm import generate
+    from mlx_lm.utils import load_model, load_tokenizer, get_model_path
+
+    messages = []
+    if system_prompt:
+        messages.append({"role": "system", "content": system_prompt})
+
+    hashing_kv: BaseKVStorage = kwargs.pop("hashing_kv", None)
+    num_ctx = hashing_kv.global_config.get("llm_model_max_token_size", 0)
+    messages.extend(history_messages)
+    messages.append({"role": "user", "content": prompt})
+    if hashing_kv is not None and system_prompt is None:
+        args_hash = compute_args_hash(model, messages)
+        if_cache_return = await hashing_kv.get_by_id(args_hash)
+        if if_cache_return is not None:
+            return if_cache_return["return"]
+    
+    model_path = get_model_path(model)
+
+    _tokenizer = load_tokenizer(model_path)
+    _model = load_model(model_path)
+    
+    prompt = ""
+    for message in messages:
+        prompt += f"<|start_header_id|>{message['role']}<|end_header_id|>{message['content']}\n"
+
+    prompt += "<|start_header_id|>assistant<|end_header_id|>"
+
+    print(f'Prompt: {prompt}')
+
+    result = generate(_model, _tokenizer, prompt, num_ctx, False, 0.3)
+
+    print(f'Response: {result}')
+
+    if hashing_kv is not None and system_prompt is None:
+        await hashing_kv.upsert({args_hash: {"return": result, "model": model}})
+
+    return result
 
 async def gpt_4o_complete(
     prompt, system_prompt=None, history_messages=[], **kwargs
@@ -378,6 +419,17 @@ async def ollama_model_complete(
 ) -> str:
     model_name = kwargs["hashing_kv"].global_config["llm_model_name"]
     return await ollama_model_if_cache(
+        model_name,
+        prompt,
+        system_prompt=system_prompt,
+        history_messages=history_messages,
+        **kwargs,
+    )
+
+async def mlx_model_complete(prompt, system_prompt=None, history_messages=[], **kwargs
+) -> str:
+    model_name = kwargs["hashing_kv"].global_config["llm_model_name"]
+    return await mlx_model_if_cache(
         model_name,
         prompt,
         system_prompt=system_prompt,
@@ -577,6 +629,16 @@ async def ollama_embed(texts: list[str], embed_model) -> np.ndarray:
     for text in texts:
         data = ollama.embed(model=embed_model, input=text, keep_alive="-1m")
         embed_text.append(data["embeddings"][0])
+
+    return embed_text
+
+async def mlx_embedding(texts: list[str], embed_model) -> np.ndarray:
+    from mlx_embedding_models.embedding import EmbeddingModel
+    model = EmbeddingModel.from_registry(embed_model)
+    embed_text = []
+    for text in texts:
+        embeddings = model.encode([text])
+        embed_text.append(embeddings[0])
 
     return embed_text
 
