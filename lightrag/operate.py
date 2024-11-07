@@ -257,11 +257,15 @@ async def extract_entities(
     PROMPTS = global_config["prompts"]
 
     entity_extract_prompt = PROMPTS["entity_extraction"]
+    entity_types_descriptions = None
+    if "DEFAULT_ENTITY_TYPES_DESCRIPTIONS" in PROMPTS:
+        entity_types_descriptions = PROMPTS["DEFAULT_ENTITY_TYPES_DESCRIPTIONS"]
     context_base = dict(
         tuple_delimiter=PROMPTS["DEFAULT_TUPLE_DELIMITER"],
         record_delimiter=PROMPTS["DEFAULT_RECORD_DELIMITER"],
         completion_delimiter=PROMPTS["DEFAULT_COMPLETION_DELIMITER"],
         entity_types=",".join(PROMPTS["DEFAULT_ENTITY_TYPES"]),
+        entity_types_descriptions=entity_types_descriptions,
     )
     continue_prompt = PROMPTS["entiti_continue_extraction"]
     if_loop_prompt = PROMPTS["entiti_if_loop_extraction"]
@@ -960,14 +964,14 @@ async def hybrid_query(
             query_param,
         )
 
-    context = combine_contexts(high_level_context, low_level_context)
-
-    print(f'--- CONTEXT ---\n{context}')
+    context = combine_contexts(high_level_context, low_level_context, global_config=global_config)
 
     if query_param.only_need_context:
         return context
     if context is None:
         return PROMPTS["fail_response"]
+    
+    print(f'--- CONTEXT ---\n{context}')
 
     sys_prompt_temp = PROMPTS["rag_response"]
     sys_prompt = sys_prompt_temp.format(
@@ -990,7 +994,7 @@ async def hybrid_query(
     return response
 
 
-def combine_contexts(high_level_context, low_level_context):
+def combine_contexts(high_level_context, low_level_context, global_config):
     # Function to extract entities, relationships, and sources from context strings
 
     def extract_sections(context):
@@ -1028,10 +1032,19 @@ def combine_contexts(high_level_context, low_level_context):
     else:
         ll_entities, ll_relationships, ll_sources = extract_sections(low_level_context)
 
+    PROMPTS = global_config["prompts"]
+    default_entity_type_descriptions = PROMPTS["DEFAULT_ENTITY_TYPES_DESCRIPTIONS"]
+
     # Combine and deduplicate the entities
     combined_entities_set = set(
         filter(None, hl_entities.strip().split("\n") + ll_entities.strip().split("\n"))
     )
+
+    entities_header = 'id;\tentity;\ttype;\tdescription;\trank'
+    combined_entities_set = [
+        entities_header
+    ] + list(combined_entities_set - {entities_header})
+
     combined_entities = "\n".join(combined_entities_set)
 
     # Combine and deduplicate the relationships
@@ -1041,12 +1054,24 @@ def combine_contexts(high_level_context, low_level_context):
             hl_relationships.strip().split("\n") + ll_relationships.strip().split("\n"),
         )
     )
+
+    relationships_header = 'id;\tsource;\ttarget;\tdescription;\tkeywords;\tweight;\trank'
+    combined_relationships_set = [
+        relationships_header
+    ] + list(combined_relationships_set - {relationships_header})
+
     combined_relationships = "\n".join(combined_relationships_set)
 
     # Combine and deduplicate the sources
     combined_sources_set = set(
         filter(None, hl_sources.strip().split("\n") + ll_sources.strip().split("\n"))
     )
+
+    sources_header = "id;\tcontent"
+    combined_sources_set = [
+        sources_header
+    ] + list(combined_sources_set - {sources_header})
+
     combined_sources = "\n".join(combined_sources_set)
 
     # Format the combined context
