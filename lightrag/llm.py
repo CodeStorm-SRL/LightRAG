@@ -335,7 +335,7 @@ async def mlx_model_if_cache(
     
     model_path = get_model_path(model)
 
-    _tokenizer = load_tokenizer(model_path)
+    tokenizer = load_tokenizer(model_path)
     _model = load_model(model_path)
     
     prompt = ""
@@ -344,9 +344,14 @@ async def mlx_model_if_cache(
 
     prompt += "<|start_header_id|>assistant<|end_header_id|>"
 
-    print(f'Prompt: {prompt}')
+    print(f'\nPrompt: {prompt}')
 
-    result = generate(_model, _tokenizer, prompt, num_ctx, False, 0.3)
+    tokens = tokenizer.encode(prompt, return_tensors=None)
+    num_ctx = len(tokens)
+
+    print(f'\nNum ctx: {num_ctx}\n\n----\n\n')
+
+    result = generate(_model, tokenizer, prompt, num_ctx, False, 0.3)
 
     print(f'Response: {result}')
 
